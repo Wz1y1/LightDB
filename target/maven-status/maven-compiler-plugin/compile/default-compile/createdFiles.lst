@@ -1,0 +1,11 @@
+ed/inf/adbs/lightdb/JoinOperator.class
+ed/inf/adbs/lightdb/Schema.class
+ed/inf/adbs/lightdb/Tuple.class
+ed/inf/adbs/lightdb/ProjectOperator.class
+ed/inf/adbs/lightdb/SelectOperator.class
+ed/inf/adbs/lightdb/SelectEvaluator.class
+ed/inf/adbs/lightdb/DatabaseCatalog.class
+ed/inf/adbs/lightdb/SelectEvaluator$BinaryOperator.class
+ed/inf/adbs/lightdb/LightDB.class
+ed/inf/adbs/lightdb/ScanOperator.class
+ed/inf/adbs/lightdb/Operator.class
