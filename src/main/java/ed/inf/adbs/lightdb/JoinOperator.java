@@ -10,12 +10,16 @@ public class JoinOperator extends Operator {
     private Operator rightChild;
     private Expression joinCondition;
     private Tuple currentLeftTuple;
+    private Schema combinedSchema; // New member for combined schema
 
-    public JoinOperator(Operator leftChild, Operator rightChild, Expression joinCondition) {
+
+    public JoinOperator(Operator leftChild, Operator rightChild, Expression joinCondition, Schema combinedSchema) {
         this.leftChild = leftChild;
         this.rightChild = rightChild;
         this.joinCondition = joinCondition;
         this.currentLeftTuple = null;
+        this.combinedSchema = combinedSchema;
+
     }
 
     @Override
@@ -29,9 +33,11 @@ public class JoinOperator extends Operator {
 
             Tuple rightTuple;
             while ((rightTuple = rightChild.getNextTuple()) != null) {
-                Tuple combinedTuple = combineTuples(currentLeftTuple, rightTuple); // Use combineTuples method
-                if (joinCondition == null || evaluateJoinCondition(combinedTuple)) {
+                // Instead of immediately combining, first check the join condition with separate tuples
+                if (joinCondition == null || evaluateJoinCondition(currentLeftTuple, rightTuple)) {
                     // If there's no join condition or the join condition is satisfied
+                    // Now combine the tuples after confirming the condition is satisfied
+                    Tuple combinedTuple = combineTuples(currentLeftTuple, rightTuple);
                     return combinedTuple;
                 }
             }
@@ -40,6 +46,7 @@ public class JoinOperator extends Operator {
             currentLeftTuple = null;
         }
     }
+
 
     private Tuple combineTuples(Tuple leftTuple, Tuple rightTuple) {
         List<Integer> leftValues = leftTuple.getValues();
@@ -52,12 +59,9 @@ public class JoinOperator extends Operator {
         return new Tuple(combinedValues); // Return a new tuple with combined values
     }
 
-    private boolean evaluateJoinCondition(Tuple combinedTuple) {
-        // This method needs to evaluate the join condition using the combined tuple.
-        // You'll need to adapt your existing expression evaluation mechanism to work here.
-        // This could involve using your SelectEvaluator or similar, with modifications
-        // to evaluate the expression against the combined tuple.
-        return true; // Placeholder, implement based on your system's capabilities
+    private boolean evaluateJoinCondition(Tuple leftTuple, Tuple rightTuple) {
+        JoinEvalExpression evalExpression = new JoinEvalExpression(combinedSchema);
+        return evalExpression.evaluate(joinCondition, leftTuple, rightTuple);
     }
 
     @Override

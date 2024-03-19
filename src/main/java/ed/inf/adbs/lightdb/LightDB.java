@@ -115,11 +115,26 @@ public class LightDB {
 						Schema rightSchema = new Schema(rightTableName, rightColumnNames);
 						Operator rightScanOperator = new ScanOperator(rightTableName);
 
+						// Log left schema before combining
+//						System.out.println("Left schema before combining:");
+//						leftSchema.getColumnNames().forEach(columnName ->
+//								System.out.println(columnName + " index: " + leftSchema.getColumnIndex(columnName)));
+
+						// Log right schema before combining
+//						System.out.println("Right schema before combining:");
+//						rightSchema.getColumnNames().forEach(columnName ->
+//								System.out.println(columnName + " index: " + rightSchema.getColumnIndex(columnName)));
+
+
 						combinedSchema = leftSchema.combineWith(rightSchema); // Update combinedSchema
+//						Schema finalCombinedSchema = combinedSchema;
+//						combinedSchema.getColumnNames().forEach(columnName ->
+//								System.out.println(columnName + " index: " + finalCombinedSchema.getColumnIndex(columnName)));
+
 
 						// Extracting join condition
 						Expression joinCondition = join.getOnExpression();
-						finalOperator = new JoinOperator(finalOperator, rightScanOperator, joinCondition);
+						finalOperator = new JoinOperator(finalOperator, rightScanOperator, joinCondition, combinedSchema);
 					}
 				}
 
