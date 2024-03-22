@@ -18,6 +18,8 @@ public class SelectOperator extends Operator {
         Tuple tuple;
         while ((tuple = childOperator.getNextTuple()) != null) {
             SelectEvaluator evaluator = new SelectEvaluator(tuple, schema);
+
+
             whereCondition.accept(evaluator);
             if (evaluateCondition(tuple, whereCondition)) {
                 return tuple;

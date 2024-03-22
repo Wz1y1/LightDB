@@ -5,10 +5,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 import net.sf.jsqlparser.expression.Expression;
 import net.sf.jsqlparser.schema.Column;
@@ -37,50 +34,6 @@ public class LightDB {
 		executeSQL(databaseDir, inputFile, outputFile);
 	}
 
-
-//	public static void executeSQL(String databaseDir, String inputFile, String outputFile) {
-//		try {
-//			DatabaseCatalog catalog = DatabaseCatalog.getInstance();
-//			// Initialize the catalog using the new method
-//			catalog.initializeCatalog(databaseDir, databaseDir + "/schema.txt");
-//
-//			Statement statement = CCJSqlParserUtil.parse(new FileReader(inputFile));
-//			if (statement instanceof Select) {
-//				Select select = (Select) statement;
-//				PlainSelect plainSelect = (PlainSelect) select.getSelectBody();
-//				Table table = (Table) plainSelect.getFromItem();
-//				String tableName = table.getName();
-//
-//				Expression whereCondition = plainSelect.getWhere();
-//
-//				List<String> columnNames = catalog.getSchema(tableName); // This should return column names without the table prefix
-//				Schema schema = new Schema(tableName, columnNames);
-//
-//
-//				// Create the ScanOperator to scan the table
-//				Operator scanOperator = new ScanOperator(tableName);
-//				Operator currentOperator = scanOperator;
-//				System.out.println("Where condition: " + whereCondition);
-//				// Temporary test to print out all tuples scanned
-//
-//				if (whereCondition != null) {
-//					currentOperator = new SelectOperator(scanOperator, whereCondition, schema);
-//				}
-//				// Handle the SELECT columns (projection)
-//				List<SelectItem> selectItems = plainSelect.getSelectItems();
-//				if (!isSelectAll(selectItems)) { // Only create a ProjectOperator if specific columns are requested
-//					List<String> projectionColumns = parseSelectItems(selectItems);
-//					currentOperator = new ProjectOperator(currentOperator, schema, projectionColumns);
-//				}
-//
-//				currentOperator.dump(System.out); // Output filtered tuples to the console
-//			}
-//		} catch (Exception e) {
-//			System.err.println("Exception occurred during selection");
-//			e.printStackTrace();
-//		}
-//	}
-
 	public static void executeSQL(String databaseDir, String inputFile, String outputFile) {
 		try {
 			DatabaseCatalog catalog = DatabaseCatalog.getInstance();
@@ -91,75 +44,133 @@ public class LightDB {
 				Select select = (Select) statement;
 				PlainSelect plainSelect = (PlainSelect) select.getSelectBody();
 
-				// Handling the FROM item
-				Table leftTable = (Table) plainSelect.getFromItem();
-				String leftTableName = leftTable.getName();
-				List<String> leftColumnNames = catalog.getSchema(leftTableName);
-				Schema leftSchema = new Schema(leftTableName, leftColumnNames);
-				Operator finalOperator = new ScanOperator(leftTableName);
-
-				Schema combinedSchema = leftSchema; // Initialize combinedSchema with leftSchema
-
-				// Apply WHERE condition if present
-				Expression whereCondition = plainSelect.getWhere();
-				if (whereCondition != null) {
-					finalOperator = new SelectOperator(finalOperator, whereCondition, leftSchema);
+				// Initialize AliasHandler and WhereClauseProcessor
+				AliasHandler aliasHandler = new AliasHandler(plainSelect);
+				WhereClauseProcessor clauseProcessor = new WhereClauseProcessor();
+				if (plainSelect.getWhere() != null) {
+					plainSelect.getWhere().accept(clauseProcessor);
 				}
 
-				// Handling JOINs
-				if (plainSelect.getJoins() != null && !plainSelect.getJoins().isEmpty()) {
-					for (Join join : plainSelect.getJoins()) {
-						Table rightTable = (Table) join.getRightItem();
-						String rightTableName = rightTable.getName();
-						List<String> rightColumnNames = catalog.getSchema(rightTableName);
-						Schema rightSchema = new Schema(rightTableName, rightColumnNames);
-						Operator rightScanOperator = new ScanOperator(rightTableName);
+				Operator currentOperator = null;
+				Schema combinedSchema = null;
 
-						// Log left schema before combining
-//						System.out.println("Left schema before combining:");
-//						leftSchema.getColumnNames().forEach(columnName ->
-//								System.out.println(columnName + " index: " + leftSchema.getColumnIndex(columnName)));
+				// Iterate over tables, now considering aliases
+				for (TableInfo tableInfo : extractTables(plainSelect, catalog, aliasHandler)) {
+					String tableName = tableInfo.getTableName();
+					String aliasName = tableInfo.getAlias();
+					String resolvedTableName = aliasName != null ? aliasName : tableName;
 
-						// Log right schema before combining
-//						System.out.println("Right schema before combining:");
-//						rightSchema.getColumnNames().forEach(columnName ->
-//								System.out.println(columnName + " index: " + rightSchema.getColumnIndex(columnName)));
+					List<String> columnNames = catalog.getSchema(tableName); // Assuming schema is identified by original table name
+					Schema schema = new Schema(resolvedTableName, columnNames);
 
+					Operator scanOperator = new ScanOperator(tableName);
 
-						combinedSchema = leftSchema.combineWith(rightSchema); // Update combinedSchema
-//						Schema finalCombinedSchema = combinedSchema;
-//						combinedSchema.getColumnNames().forEach(columnName ->
-//								System.out.println(columnName + " index: " + finalCombinedSchema.getColumnIndex(columnName)));
+					// Use resolvedTableName to fetch conditions, assuming conditions are keyed by alias if present
+					List<Expression> tableSpecificConditions = clauseProcessor.getConditionsForTable(resolvedTableName);
+					if (tableSpecificConditions != null) {
+						for (Expression condition : tableSpecificConditions) {
+							scanOperator = new SelectOperator(scanOperator, condition, schema);
+						}
+					}
 
-
-						// Extracting join condition
-						Expression joinCondition = join.getOnExpression();
-						finalOperator = new JoinOperator(finalOperator, rightScanOperator, joinCondition, combinedSchema);
+					if (currentOperator == null) {
+						currentOperator = scanOperator;
+						combinedSchema = schema;
+					} else {
+						combinedSchema = combinedSchema.combineWith(schema);
+						Expression joinCondition = clauseProcessor.getJoinExpression();
+						currentOperator = new JoinOperator(currentOperator, scanOperator, joinCondition, combinedSchema);
 					}
 				}
 
-				// Handle projection
+				// Assuming you have a list of TableInfo objects from earlier in your method
+				List<TableInfo> tableInfos = extractTables(plainSelect, catalog, aliasHandler);
+
+				// Apply projection, considering aliases
 				List<SelectItem> selectItems = plainSelect.getSelectItems();
 				if (!isSelectAll(selectItems)) {
-					List<String> projectionColumns = parseSelectItems(selectItems);
-					finalOperator = new ProjectOperator(finalOperator, combinedSchema, projectionColumns); // Use combinedSchema here
+					List<String> projectionColumns = parseSelectItems(selectItems, tableInfos); // Adjusted to use TableInfo
+					currentOperator = new ProjectOperator(currentOperator, combinedSchema, projectionColumns);
 				}
 
 				// Assuming dump method outputs the tuples
-				finalOperator.dump(System.out);
+				currentOperator.dump(System.out);
 			}
 		} catch (Exception e) {
-			System.err.println("Exception occurred during query execution");
 			e.printStackTrace();
 		}
 	}
 
-//	private static Schema combineSchemas(Schema leftSchema, Schema rightSchema) {
-//		// Combine the column names from both schemas
-//		List<String> combinedColumnNames = new ArrayList<>(leftSchema.getColumnNames());
-//		combinedColumnNames.addAll(rightSchema.getColumnNames());
-//		return new Schema("Combined", combinedColumnNames);
+
+
+
+
+//	public static List<Table> extractTables(PlainSelect plainSelect, DatabaseCatalog catalog, AliasHandler aliasHandler) {
+//		List<Table> tables = new ArrayList<>();
+//
+//		// Extract the main table from the FROM clause
+//		FromItem fromItem = plainSelect.getFromItem();
+//		if (fromItem instanceof Table) {
+//			tables.add((Table) fromItem);
+//		}
+//
+//		// Extract tables from JOIN clauses, if any
+//		if (plainSelect.getJoins() != null) {
+//			for (Join join : plainSelect.getJoins()) {
+//				FromItem joinItem = join.getRightItem();
+//				if (joinItem instanceof Table) {
+//					tables.add((Table) joinItem);
+//				}
+//			}
+//		}
+//		return tables;
 //	}
+
+	public static List<TableInfo> extractTables(PlainSelect plainSelect, DatabaseCatalog catalog, AliasHandler aliasHandler) {
+		List<TableInfo> tables = new ArrayList<>();
+
+		// Extract the main table from the FROM clause
+		FromItem fromItem = plainSelect.getFromItem();
+		if (fromItem instanceof Table) {
+			Table table = (Table) fromItem;
+			tables.add(new TableInfo(table.getName(), table.getAlias() != null ? table.getAlias().getName() : null));
+		}
+
+		// Extract tables from JOIN clauses, if any
+		if (plainSelect.getJoins() != null) {
+			for (Join join : plainSelect.getJoins()) {
+				FromItem joinItem = join.getRightItem();
+				if (joinItem instanceof Table) {
+					Table joinTable = (Table) joinItem;
+					tables.add(new TableInfo(joinTable.getName(), joinTable.getAlias() != null ? joinTable.getAlias().getName() : null));
+				}
+			}
+		}
+
+		return tables;
+	}
+
+
+
+
+
+	private static void processTable(FromItem fromItem, DatabaseCatalog catalog, AliasHandler aliasHandler, Map<String, Operator> tableScanOperators, Map<String, Schema> tableSchemas) {
+		if (fromItem instanceof Table) {
+			Table table = (Table) fromItem;
+			String tableName = aliasHandler.resolveTableName(table.getName());
+			List<String> columnNames = catalog.getSchema(tableName);
+			Schema schema = new Schema(tableName, columnNames);
+			Operator scanOperator = new ScanOperator(tableName);
+
+
+			tableScanOperators.put(tableName, scanOperator);
+			tableSchemas.put(tableName, schema);
+		}
+	}
+
+
+
+
 
 
 
@@ -168,17 +179,96 @@ public class LightDB {
 		return selectItems.size() == 1 && selectItems.get(0) instanceof AllColumns;
 	}
 
-	private static List<String> parseSelectItems(List<SelectItem> selectItems) {
-		// Extract column names from SelectItems for projection
+
+	private static List<String> parseSelectItems(List<SelectItem> selectItems, List<TableInfo> tableInfos) {
+		// Build a reverse mapping from table names and aliases to TableInfo objects for easy lookup.
+		Map<String, TableInfo> reverseMapping = new HashMap<>();
+		for (TableInfo tableInfo : tableInfos) {
+			reverseMapping.put(tableInfo.getTableName(), tableInfo);
+			// Also map the alias for direct access, ensuring alias is considered
+			if (tableInfo.getAlias() != null) {
+				reverseMapping.put(tableInfo.getAlias(), tableInfo);
+			}
+		}
+
 		List<String> columns = new ArrayList<>();
 		for (SelectItem item : selectItems) {
 			if (item instanceof SelectExpressionItem) {
 				Expression expression = ((SelectExpressionItem) item).getExpression();
 				if (expression instanceof Column) {
-					columns.add(((Column) expression).getFullyQualifiedName());
+					Column column = (Column) expression;
+					String columnName = column.getColumnName();
+					String tableNameOrAlias = column.getTable() != null ? column.getTable().getName() : null;
+
+					// Directly use the table name or alias as found without resolving to the original table name
+					// This approach maintains the alias (if used in the query) in the fully qualified column name
+					String fullyQualifiedName = tableNameOrAlias != null ? tableNameOrAlias + "." + columnName : columnName;
+					columns.add(fullyQualifiedName);
 				}
 			}
 		}
 		return columns;
 	}
+
+
 }
+
+
+
+//	public static void executeSQL(String databaseDir, String inputFile, String outputFile) {
+//		try {
+//			DatabaseCatalog catalog = DatabaseCatalog.getInstance();
+//			catalog.initializeCatalog(databaseDir, databaseDir + "/schema.txt");
+//
+//			Statement statement = CCJSqlParserUtil.parse(new FileReader(inputFile));
+//			if (statement instanceof Select) {
+//				Select select = (Select) statement;
+//				PlainSelect plainSelect = (PlainSelect) select.getSelectBody();
+//
+//				// Handling the FROM item
+//				Table leftTable = (Table) plainSelect.getFromItem();
+//				String leftTableName = leftTable.getName();
+//				List<String> leftColumnNames = catalog.getSchema(leftTableName);
+//				Schema leftSchema = new Schema(leftTableName, leftColumnNames);
+//				Operator finalOperator = new ScanOperator(leftTableName);
+//
+//				Schema combinedSchema = leftSchema; // Initialize combinedSchema with leftSchema
+//
+//				// Apply WHERE condition if present
+//				Expression whereCondition = plainSelect.getWhere();
+//				if (whereCondition != null) {
+//					finalOperator = new SelectOperator(finalOperator, whereCondition, leftSchema);
+//				}
+//
+//				// Handling JOINs
+//				if (plainSelect.getJoins() != null && !plainSelect.getJoins().isEmpty()) {
+//					for (Join join : plainSelect.getJoins()) {
+//						Table rightTable = (Table) join.getRightItem();
+//						String rightTableName = rightTable.getName();
+//						List<String> rightColumnNames = catalog.getSchema(rightTableName);
+//						Schema rightSchema = new Schema(rightTableName, rightColumnNames);
+//						Operator rightScanOperator = new ScanOperator(rightTableName);
+//
+//
+//						combinedSchema = leftSchema.combineWith(rightSchema); // Update combinedSchema
+//
+//						Expression joinCondition = join.getOnExpression();
+//						finalOperator = new JoinOperator(finalOperator, rightScanOperator, joinCondition, combinedSchema);
+//					}
+//				}
+//
+//				// Handle projection
+//				List<SelectItem> selectItems = plainSelect.getSelectItems();
+//				if (!isSelectAll(selectItems)) {
+//					List<String> projectionColumns = parseSelectItems(selectItems);
+//					finalOperator = new ProjectOperator(finalOperator, combinedSchema, projectionColumns); // Use combinedSchema here
+//				}
+//
+//				// Assuming dump method outputs the tuples
+//				finalOperator.dump(System.out);
+//			}
+//		} catch (Exception e) {
+//			System.err.println("Exception occurred during query execution");
+//			e.printStackTrace();
+//		}
+//	}

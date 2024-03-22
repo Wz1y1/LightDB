@@ -108,7 +108,12 @@ public class SelectEvaluator extends ExpressionDeParser {
     @Override
     public void visit(Column column) {
         String fullyQualifiedName = column.getFullyQualifiedName();
+
         Integer index = schema.getColumnIndex(fullyQualifiedName);
+
+//        schema.printSchema();
+//        System.out.println(index);
+
         if (index != null) {
             Object value = tuple.getValues().get(index); // Directly access the integer value
             super.getBuffer().setLength(0); // Clear any previous value

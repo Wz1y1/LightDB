@@ -44,6 +44,11 @@ public class Schema {
         this.columnMapping = columnMapping;
     }
 
+    public void printSchema() {
+        System.out.println("Schema:");
+        columnMapping.forEach((key, value) -> System.out.println("Column: " + key + ", Index: " + value));
+    }
+
 
 
     // Additional methods...

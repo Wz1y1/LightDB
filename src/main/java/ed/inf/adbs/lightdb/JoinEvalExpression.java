@@ -1,6 +1,8 @@
 package ed.inf.adbs.lightdb;
 
 import net.sf.jsqlparser.expression.*;
+import net.sf.jsqlparser.expression.operators.conditional.AndExpression;
+import net.sf.jsqlparser.expression.operators.conditional.OrExpression;
 import net.sf.jsqlparser.expression.operators.relational.*;
 import net.sf.jsqlparser.schema.Column;
 import net.sf.jsqlparser.util.deparser.ExpressionDeParser;
@@ -64,6 +66,33 @@ public class JoinEvalExpression {
             evaluateBinaryExpression(notEqualsTo);
         }
 
+        @Override
+        public void visit(AndExpression andExpression) {
+            andExpression.getLeftExpression().accept(this);
+            boolean leftResult = this.conditionMet;
+
+            // Only proceed to evaluate the right expression if the left is true
+            if (leftResult) {
+                andExpression.getRightExpression().accept(this);
+                this.conditionMet = this.conditionMet && leftResult;
+            } else {
+                this.conditionMet = false;
+            }
+        }
+
+        // Overriding visit method for OrExpression
+        @Override
+        public void visit(OrExpression orExpression) {
+            orExpression.getLeftExpression().accept(this);
+            boolean leftResult = this.conditionMet;
+
+            // If the left result is true, the whole expression is true without evaluating the right side
+            if (!leftResult) {
+                orExpression.getRightExpression().accept(this);
+                this.conditionMet = this.conditionMet || leftResult;
+            }
+        }
+
         private void evaluateBinaryExpression(BinaryExpression binaryExpression) {
             Expression leftExpression = binaryExpression.getLeftExpression();
             Expression rightExpression = binaryExpression.getRightExpression();
@@ -109,8 +138,6 @@ public class JoinEvalExpression {
                     conditionMet = false;
             }
         }
-
-        // Add overrides for other expression types as needed, e.g., logical operators AND, OR
     }
 }
 
