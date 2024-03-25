@@ -6,6 +6,7 @@ import java.util.*;
 
 import net.sf.jsqlparser.expression.Expression;
 import net.sf.jsqlparser.expression.Function;
+import net.sf.jsqlparser.expression.operators.relational.EqualsTo;
 import net.sf.jsqlparser.expression.operators.relational.ExpressionList;
 import net.sf.jsqlparser.schema.Column;
 import net.sf.jsqlparser.schema.Table;
@@ -82,7 +83,13 @@ public class LightDB {
 					} else {
 						combinedSchema = Schema.combine(combinedSchema, schema);
 						Expression joinCondition = clauseProcessor.getJoinExpression();
-						currentOperator = new JoinOperator(currentOperator, scanOperator, joinCondition, combinedSchema);
+
+						// Check if the join condition can be applied (i.e., all columns involved are present in the combinedSchema)
+						boolean canApplyJoinCondition = canApplyJoinCondition(joinCondition, combinedSchema);
+
+
+						currentOperator = new JoinOperator(currentOperator, scanOperator, canApplyJoinCondition ? joinCondition : null, combinedSchema);
+
 					}
 				}
 
@@ -169,21 +176,28 @@ public class LightDB {
 		}
 	}
 
-	private static Integer findGroupByColumnIndex(PlainSelect plainSelect, Schema schema) {
-		GroupByElement groupBy = plainSelect.getGroupBy();
-		if (groupBy != null) {
-			List<Expression> groupByExpressions = groupBy.getGroupByExpressions();
-			if (groupByExpressions != null && !groupByExpressions.isEmpty()) {
-				// Assuming only the first column is used for GROUP BY
-				Expression firstGroupByExpr = groupByExpressions.get(0);
-				if (firstGroupByExpr instanceof Column) {
-					String columnName = ((Column) firstGroupByExpr).getColumnName();
-					// Assuming schema can resolve the column index by its name
-					return schema.getColumnIndex(columnName);
-				}
+	private static boolean canApplyJoinCondition(Expression joinCondition, Schema combinedSchema) {
+		if (joinCondition == null) return false;
+
+		// This utility method needs to parse the joinCondition to extract column names involved.
+		List<String> involvedColumns = extractColumnNames(joinCondition);
+
+		// Use combinedSchema.hasColumn to check if all columns are present.
+		return involvedColumns.stream().allMatch(combinedSchema::hasColumn);
+	}
+
+
+	public static List<String> extractColumnNames(Expression joinCondition) {
+		List<String> columnNames = new ArrayList<>();
+		if (joinCondition instanceof EqualsTo) {
+			EqualsTo equals = (EqualsTo) joinCondition;
+			if (equals.getLeftExpression() instanceof Column && equals.getRightExpression() instanceof Column) {
+				columnNames.add(((Column) equals.getLeftExpression()).getFullyQualifiedName());
+				columnNames.add(((Column) equals.getRightExpression()).getFullyQualifiedName());
 			}
 		}
-		return null; // No group by column found
+		// Extend this to handle other types of expressions as needed
+		return columnNames;
 	}
 
 	private static List<String> findGroupByColumnNames(PlainSelect plainSelect, Schema schema) {
@@ -272,7 +286,6 @@ public class LightDB {
 				}
 			}
 		}
-
 		return tables;
 	}
 

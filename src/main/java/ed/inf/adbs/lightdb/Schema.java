@@ -43,6 +43,18 @@ public class Schema {
         return combinedSchema;
     }
 
+    public boolean hasColumn(String columnName) {
+        // Check both fully qualified and simple column names
+        boolean hasFullyQualified = columnMapping.containsKey(columnName);
+        if(hasFullyQualified) return true;
+
+        // Check for simple column name match if fully qualified name not found
+        String simpleColumnName = columnName.contains(".") ?
+                columnName.substring(columnName.lastIndexOf('.') + 1) :
+                columnName;
+        return columnMapping.keySet().stream().anyMatch(key -> key.endsWith("." + simpleColumnName));
+    }
+
 
 
     public void printSchema() {
