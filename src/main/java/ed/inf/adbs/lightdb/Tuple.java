@@ -15,6 +15,13 @@ public class Tuple {
         return values;
     }
 
+    public int getValueByPos(int i) {
+        return values.get(i);
+    }
+
+
+
+
     @Override
     public String toString() {
         // Convert each integer to a string for joining

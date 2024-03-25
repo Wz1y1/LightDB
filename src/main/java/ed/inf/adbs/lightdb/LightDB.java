@@ -1,13 +1,12 @@
 package ed.inf.adbs.lightdb;
 
 import java.io.FileReader;
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
+
 import java.util.*;
 
 import net.sf.jsqlparser.expression.Expression;
+import net.sf.jsqlparser.expression.Function;
+import net.sf.jsqlparser.expression.operators.relational.ExpressionList;
 import net.sf.jsqlparser.schema.Column;
 import net.sf.jsqlparser.schema.Table;
 import net.sf.jsqlparser.parser.CCJSqlParserUtil;
@@ -34,6 +33,7 @@ public class LightDB {
 		executeSQL(databaseDir, inputFile, outputFile);
 	}
 
+
 	public static void executeSQL(String databaseDir, String inputFile, String outputFile) {
 		try {
 			DatabaseCatalog catalog = DatabaseCatalog.getInstance();
@@ -54,6 +54,8 @@ public class LightDB {
 				Operator currentOperator = null;
 				Schema combinedSchema = null;
 
+
+
 				// Iterate over tables, now considering aliases
 				for (TableInfo tableInfo : extractTables(plainSelect, catalog, aliasHandler)) {
 					String tableName = tableInfo.getTableName();
@@ -73,11 +75,12 @@ public class LightDB {
 						}
 					}
 
+
 					if (currentOperator == null) {
 						currentOperator = scanOperator;
 						combinedSchema = schema;
 					} else {
-						combinedSchema = combinedSchema.combineWith(schema);
+						combinedSchema = Schema.combine(combinedSchema, schema);
 						Expression joinCondition = clauseProcessor.getJoinExpression();
 						currentOperator = new JoinOperator(currentOperator, scanOperator, joinCondition, combinedSchema);
 					}
@@ -86,12 +89,77 @@ public class LightDB {
 				// Assuming you have a list of TableInfo objects from earlier in your method
 				List<TableInfo> tableInfos = extractTables(plainSelect, catalog, aliasHandler);
 
-				// Apply projection, considering aliases
-				List<SelectItem> selectItems = plainSelect.getSelectItems();
-				if (!isSelectAll(selectItems)) {
-					List<String> projectionColumns = parseSelectItems(selectItems, tableInfos); // Adjusted to use TableInfo
-					currentOperator = new ProjectOperator(currentOperator, combinedSchema, projectionColumns);
+
+				// Check for GROUP BY and SUM aggregation
+				List<String> groupByColumnName = findGroupByColumnNames(plainSelect, combinedSchema); // This method should find and return the group by column name, or null if not present
+				String sumColumnName = findSumColumnName(plainSelect); // This method should find and return the sum column name, or null if not present
+
+				System.out.println("group by name: " + groupByColumnName);
+				System.out.println("sum column name: " + sumColumnName);
+
+
+
+				if (sumColumnName != null || !groupByColumnName.isEmpty()) {
+					// Apply SumOperator
+
+					SumOperator sumOperator = new SumOperator(currentOperator, sumColumnName, groupByColumnName, combinedSchema);
+
+					combinedSchema = sumOperator.getSchema();
+					combinedSchema.printSchema();
+					currentOperator = sumOperator;
 				}
+
+
+
+
+				// Apply projection, considering aliases
+				List<SelectItem<?>> selectItems = plainSelect.getSelectItems();
+				List<String> projectionColumns = parseSelectItems(selectItems, tableInfos); // Adjusted to use TableInfo
+
+				boolean isSelectAllColumns = selectItems.stream().anyMatch(item -> item.toString().equals("*"));
+
+				if (!isSelectAllColumns) {
+
+					currentOperator = new ProjectOperator(currentOperator, combinedSchema, selectItems);
+
+				}
+
+
+
+
+				// Handle DISTINCT
+				if (plainSelect.getDistinct() != null) {
+					currentOperator = new DuplicateEliminationOperator(currentOperator, combinedSchema, projectionColumns);
+				}
+
+
+
+
+
+
+				//Order By
+				List<OrderByElement> orderByElements = plainSelect.getOrderByElements();
+				if (orderByElements != null && !orderByElements.isEmpty()) {
+					Comparator<Tuple> compositeComparator = null;
+
+					for (OrderByElement orderByElement : orderByElements) {
+						Column column = (Column) orderByElement.getExpression();
+						int columnIndex = combinedSchema.getColumnIndex(column.getFullyQualifiedName());
+						TupleComparator currentComparator = new TupleComparator(columnIndex);
+
+						if (orderByElement.isAsc()) {
+							compositeComparator = (compositeComparator == null) ? currentComparator
+									: compositeComparator.thenComparing(currentComparator);
+						} else {
+							compositeComparator = (compositeComparator == null) ? currentComparator.reversed()
+									: compositeComparator.thenComparing(currentComparator.reversed());
+						}
+					}
+
+					// Assume SortOperator accepts a Comparator<Tuple> to sort the tuples accordingly
+					currentOperator = new SortOperator(currentOperator, compositeComparator);
+				}
+
 
 				// Assuming dump method outputs the tuples
 				currentOperator.dump(System.out);
@@ -100,6 +168,64 @@ public class LightDB {
 			e.printStackTrace();
 		}
 	}
+
+	private static Integer findGroupByColumnIndex(PlainSelect plainSelect, Schema schema) {
+		GroupByElement groupBy = plainSelect.getGroupBy();
+		if (groupBy != null) {
+			List<Expression> groupByExpressions = groupBy.getGroupByExpressions();
+			if (groupByExpressions != null && !groupByExpressions.isEmpty()) {
+				// Assuming only the first column is used for GROUP BY
+				Expression firstGroupByExpr = groupByExpressions.get(0);
+				if (firstGroupByExpr instanceof Column) {
+					String columnName = ((Column) firstGroupByExpr).getColumnName();
+					// Assuming schema can resolve the column index by its name
+					return schema.getColumnIndex(columnName);
+				}
+			}
+		}
+		return null; // No group by column found
+	}
+
+	private static List<String> findGroupByColumnNames(PlainSelect plainSelect, Schema schema) {
+		List<String> groupByColumnNames = new ArrayList<>();
+		GroupByElement groupBy = plainSelect.getGroupBy();
+		if (groupBy != null) {
+			List<Expression> groupByExpressions = groupBy.getGroupByExpressions();
+			if (groupByExpressions != null && !groupByExpressions.isEmpty()) {
+				for (Expression groupByExpr : groupByExpressions) {
+					if (groupByExpr instanceof Column) {
+						String columnName = ((Column) groupByExpr).getFullyQualifiedName();
+						groupByColumnNames.add(columnName);
+					}
+				}
+			}
+		}
+		return groupByColumnNames; // Return the list of GROUP BY column names
+	}
+
+	private static String findSumColumnName(PlainSelect plainSelect) {
+		List<SelectItem<?>> selectItems = plainSelect.getSelectItems();
+		for (SelectItem item : selectItems) {
+			String itemStr = item.toString();
+			if (itemStr.toUpperCase().startsWith("SUM(")) {
+				// Extracting column name from the SUM function
+				int startIdx = itemStr.indexOf('(') + 1;
+				int endIdx = itemStr.lastIndexOf(')');
+				if (startIdx > 0 && endIdx > startIdx) {
+					String columnName = itemStr.substring(startIdx, endIdx);
+					// Assuming the column name extraction logic needs to be refined based on actual query structure
+					return columnName;
+				}
+			}
+		}
+		return null; // No SUM function found
+	}
+
+
+
+
+
+
 
 
 
@@ -174,13 +300,8 @@ public class LightDB {
 
 
 
-	private static boolean isSelectAll(List<SelectItem> selectItems) {
-		// Check if the query is "SELECT *"
-		return selectItems.size() == 1 && selectItems.get(0) instanceof AllColumns;
-	}
 
-
-	private static List<String> parseSelectItems(List<SelectItem> selectItems, List<TableInfo> tableInfos) {
+	private static List<String> parseSelectItems(List<SelectItem<?>> selectItems, List<TableInfo> tableInfos) {
 		// Build a reverse mapping from table names and aliases to TableInfo objects for easy lookup.
 		Map<String, TableInfo> reverseMapping = new HashMap<>();
 		for (TableInfo tableInfo : tableInfos) {
@@ -193,19 +314,19 @@ public class LightDB {
 
 		List<String> columns = new ArrayList<>();
 		for (SelectItem item : selectItems) {
-			if (item instanceof SelectExpressionItem) {
-				Expression expression = ((SelectExpressionItem) item).getExpression();
-				if (expression instanceof Column) {
-					Column column = (Column) expression;
-					String columnName = column.getColumnName();
-					String tableNameOrAlias = column.getTable() != null ? column.getTable().getName() : null;
 
-					// Directly use the table name or alias as found without resolving to the original table name
-					// This approach maintains the alias (if used in the query) in the fully qualified column name
-					String fullyQualifiedName = tableNameOrAlias != null ? tableNameOrAlias + "." + columnName : columnName;
-					columns.add(fullyQualifiedName);
-				}
+			Expression expression = item.getExpression();
+			if (expression instanceof Column) {
+				Column column = (Column) expression;
+				String columnName = column.getColumnName();
+				String tableNameOrAlias = column.getTable() != null ? column.getTable().getName() : null;
+
+				// Directly use the table name or alias as found without resolving to the original table name
+				// This approach maintains the alias (if used in the query) in the fully qualified column name
+				String fullyQualifiedName = tableNameOrAlias != null ? tableNameOrAlias + "." + columnName : columnName;
+				columns.add(fullyQualifiedName);
 			}
+
 		}
 		return columns;
 	}

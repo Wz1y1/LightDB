@@ -1,13 +1,16 @@
 ed/inf/adbs/lightdb/WhereClauseProcessor.class
+ed/inf/adbs/lightdb/DuplicateEliminationOperator.class
 ed/inf/adbs/lightdb/JoinEvalExpression.class
 ed/inf/adbs/lightdb/Schema.class
 ed/inf/adbs/lightdb/Tuple.class
 ed/inf/adbs/lightdb/ProjectOperator.class
 ed/inf/adbs/lightdb/SelectOperator.class
+ed/inf/adbs/lightdb/SortOperator.class
 ed/inf/adbs/lightdb/SelectEvaluator.class
-ed/inf/adbs/lightdb/JoinEvalExpression$CustomExpressionEvaluator.class
+ed/inf/adbs/lightdb/TupleComparator.class
 ed/inf/adbs/lightdb/DatabaseCatalog.class
 ed/inf/adbs/lightdb/JoinOperator.class
+ed/inf/adbs/lightdb/SumOperator.class
 ed/inf/adbs/lightdb/AliasHandler.class
 ed/inf/adbs/lightdb/SelectEvaluator$BinaryOperator.class
 ed/inf/adbs/lightdb/LightDB.class

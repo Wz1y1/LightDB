@@ -49,6 +49,7 @@ public class ScanOperator extends Operator {
                 .collect(Collectors.toList());
     }
 
+
     @Override
     public void reset() {
         try {

@@ -15,41 +15,39 @@ public class Schema {
         }
     }
 
-    private Schema(Map<String, Integer> combinedMapping) {
-        this.columnMapping = combinedMapping;
+    public Integer getColumnIndex(String columnName) {
+        // Attempt to directly retrieve the column index using the full column name.
+        if (columnMapping.containsKey(columnName)) {
+            return columnMapping.get(columnName);
+        }
+
+        String simpleColumnName = columnName.substring(columnName.lastIndexOf('.') + 1);
+
+        return columnMapping.entrySet().stream()
+                .filter(entry -> entry.getKey().endsWith("." + simpleColumnName))
+                .map(Map.Entry::getValue)
+                .findFirst()
+                .orElse(null); // Return null if no matching column is found.
     }
 
 
-    public Integer getColumnIndex(String fullyQualifiedColumnName) {
-        return columnMapping.get(fullyQualifiedColumnName);
+
+    public static Schema combine(Schema firstSchema, Schema secondSchema) {
+        Map<String, Integer> combinedColumnMapping = new LinkedHashMap<>(firstSchema.columnMapping);
+        int offset = firstSchema.columnMapping.size();
+        secondSchema.columnMapping.forEach((columnName, index) -> combinedColumnMapping.put(columnName, index + offset));
+
+        // This uses the primary constructor with an empty tableName as combined schemas don't have a single tableName.
+        Schema combinedSchema = new Schema("", new ArrayList<>(combinedColumnMapping.keySet()));
+        combinedSchema.columnMapping = combinedColumnMapping; // Directly setting the combined mapping
+        return combinedSchema;
     }
 
-    // Add a method to get all column names
-    public List<String> getColumnNames() {
-        return new ArrayList<>(columnMapping.keySet());
-    }
 
-    // Method to combine this schema with another schema
-    public Schema combineWith(Schema otherSchema) {
-        Map<String, Integer> combinedColumnMapping = new LinkedHashMap<>(this.columnMapping);
-        int offset = this.columnMapping.size();
-        otherSchema.columnMapping.forEach((columnName, index) -> combinedColumnMapping.put(columnName, index + offset));
-
-        // Using a more descriptive combined table name
-        return new Schema(combinedColumnMapping);
-    }
-
-    // Or a setter method
-    public void setColumnMapping(Map<String, Integer> columnMapping) {
-        this.columnMapping = columnMapping;
-    }
 
     public void printSchema() {
         System.out.println("Schema:");
         columnMapping.forEach((key, value) -> System.out.println("Column: " + key + ", Index: " + value));
     }
 
-
-
-    // Additional methods...
 }
