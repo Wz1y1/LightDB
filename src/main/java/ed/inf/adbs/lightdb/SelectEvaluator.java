@@ -7,16 +7,35 @@ import net.sf.jsqlparser.expression.Expression;
 import net.sf.jsqlparser.expression.operators.conditional.AndExpression;
 import net.sf.jsqlparser.expression.operators.conditional.OrExpression;
 
+/**
+ * The {@code SelectEvaluator} class extends {@code ExpressionDeParser} to evaluate
+ * SQL where condition expressions against tuples.
+ * It supports a range of conditional and relational expressions, such as
+ * {@code >, >=, <, <=, =, !=}, AND, OR operations.
+ */
 public class SelectEvaluator extends ExpressionDeParser {
     private final Tuple tuple;
     private final Schema schema;
     private boolean result;
 
+    /**
+     * Constructs a {@code SelectEvaluator} for a specific tuple and schema.
+     *
+     * @param tuple  The tuple to be evaluated against the expression.
+     * @param schema The schema defining the structure of the tuple.
+     */
     public SelectEvaluator(Tuple tuple, Schema schema) {
         this.tuple = tuple;
         this.schema = schema;
     }
 
+    /**
+     * Evaluates a binary expression by applying a specified operation to the left and right operands.
+     *
+     * @param leftExpression  The left operand as an expression.
+     * @param rightExpression The right operand as an expression.
+     * @param operator        The operation to apply.
+     */
     private void evaluateBinaryExpression(Expression leftExpression, Expression rightExpression, BinaryOperator<Double> operator) {
         leftExpression.accept(this);
         double leftValue = Double.parseDouble(super.getBuffer().toString());
@@ -29,6 +48,8 @@ public class SelectEvaluator extends ExpressionDeParser {
         this.result = operator.apply(leftValue, rightValue);
     }
 
+    // Overridden visit methods for different types of expressions. Each method evaluates
+    // the expression and sets the result field accordingly.
     @Override
     public void visit(GreaterThan greaterThan) {
         evaluateBinaryExpression(greaterThan.getLeftExpression(), greaterThan.getRightExpression(), (left, right) -> left > right);
@@ -65,54 +86,28 @@ public class SelectEvaluator extends ExpressionDeParser {
 
     @Override
     public void visit(AndExpression andExpression) {
-        // Evaluate the left side of the AND expression
         andExpression.getLeftExpression().accept(this);
         boolean leftResult = this.result;
-
-        // Short-circuit: if the left result is false, no need to evaluate the right side
         if (!leftResult) {
-            this.result = false;
             return;
         }
-
-        // Only evaluate the right side if the left side is true
         andExpression.getRightExpression().accept(this);
-        boolean rightResult = this.result;
-
-        // The final result is true only if both sides are true
-        this.result = rightResult; // leftResult is already known to be true here
     }
 
     @Override
     public void visit(OrExpression orExpression) {
-        // Evaluate the left side of the OR expression
         orExpression.getLeftExpression().accept(this);
         boolean leftResult = this.result;
-
-        // Short-circuit: if the left result is true, no need to evaluate the right side
         if (leftResult) {
-            this.result = true;
             return;
         }
-
-        // Only evaluate the right side if the left side is false
         orExpression.getRightExpression().accept(this);
-        boolean rightResult = this.result;
-
-        // The final result is true if either side is true
-        this.result = rightResult; // Since leftResult is false, result depends on rightResult
     }
-
-
 
     @Override
     public void visit(Column column) {
         String fullyQualifiedName = column.getFullyQualifiedName();
-
         Integer index = schema.getColumnIndex(fullyQualifiedName);
-
-//        schema.printSchema();
-//        System.out.println(index);
 
         if (index != null) {
             Object value = tuple.getValues().get(index); // Directly access the integer value
@@ -128,9 +123,12 @@ public class SelectEvaluator extends ExpressionDeParser {
         boolean apply(T left, T right);
     }
 
-
+    /**
+     * Returns the result of the evaluation.
+     *
+     * @return {@code true} if the tuple satisfies the where condition, {@code false} otherwise.
+     */
     public boolean getResult() {
         return result;
     }
-
 }

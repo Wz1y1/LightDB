@@ -1,57 +1,57 @@
 package ed.inf.adbs.lightdb;
 
-import java.util.*;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 public class DuplicateEliminationOperator extends Operator {
-    private Operator childOperator;
-    private Set<String> seenTupleKeys;
+    private final Operator childOperator;
+    private final Set<String> seenTupleKeys;
+    private final List<Integer> columnIndexes;
     private Tuple nextUniqueTuple;
-    private List<Integer> columnIndexes;
 
     public DuplicateEliminationOperator(Operator childOperator, Schema schema, List<String> columnNames) {
         this.childOperator = childOperator;
         this.seenTupleKeys = new HashSet<>();
-        this.columnIndexes = new ArrayList<>();
 
-        // Initialize columnIndexes based on provided columnNames
-        for (String columnName : columnNames) {
-            this.columnIndexes.add(schema.getColumnIndex(columnName));
-        }
+        // Directly convert column names to indexes using stream for more concise code
+        this.columnIndexes = columnNames.stream()
+                .map(schema::getColumnIndex)
+                .collect(Collectors.toList());
 
-        findNextUniqueTuple();
+        this.nextUniqueTuple = findNextUniqueTuple();
     }
 
-    private void findNextUniqueTuple() {
+    private Tuple findNextUniqueTuple() {
         Tuple tuple;
         while ((tuple = childOperator.getNextTuple()) != null) {
             String tupleKey = generateTupleKey(tuple);
             if (seenTupleKeys.add(tupleKey)) {
-                nextUniqueTuple = tuple;
-                return;
+                return tuple;
             }
         }
-        nextUniqueTuple = null; // Signifies that there are no more unique tuples
+        return null; // Indicates no more unique tuples are found
     }
 
-    // Generates a unique key for a tuple based on the values of the specified columns
     private String generateTupleKey(Tuple tuple) {
-        StringBuilder keyBuilder = new StringBuilder();
-        for (int index : columnIndexes) {
-            keyBuilder.append(tuple.getValueByPos(index)).append("|"); // Use "|" as a delimiter
-        }
-        return keyBuilder.toString();
+        return columnIndexes.stream()
+                .map(index -> String.valueOf(tuple.getValueByPos(index))) // Explicitly convert to String
+                .collect(Collectors.joining("|"));
     }
+
 
     @Override
     public Tuple getNextTuple() {
-        Tuple currentTuple = nextUniqueTuple;
-        if (currentTuple != null) {
-            findNextUniqueTuple(); // Set up for the next call
-        }
+        Tuple currentTuple = this.nextUniqueTuple;
+        this.nextUniqueTuple = findNextUniqueTuple(); // Pre-fetch the next unique tuple for subsequent calls
         return currentTuple;
     }
 
     @Override
     public void reset() {
+        childOperator.reset();
+        seenTupleKeys.clear();
+        this.nextUniqueTuple = findNextUniqueTuple(); // Reset state and pre-fetch the first unique tuple again
     }
 }

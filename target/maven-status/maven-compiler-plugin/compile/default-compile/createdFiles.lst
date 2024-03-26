@@ -7,11 +7,11 @@ ed/inf/adbs/lightdb/ProjectOperator.class
 ed/inf/adbs/lightdb/SelectOperator.class
 ed/inf/adbs/lightdb/SortOperator.class
 ed/inf/adbs/lightdb/SelectEvaluator.class
-ed/inf/adbs/lightdb/TupleComparator.class
 ed/inf/adbs/lightdb/DatabaseCatalog.class
 ed/inf/adbs/lightdb/JoinOperator.class
 ed/inf/adbs/lightdb/SumOperator.class
-ed/inf/adbs/lightdb/AliasHandler.class
+ed/inf/adbs/lightdb/DatabaseCatalog$1.class
+ed/inf/adbs/lightdb/DatabaseCatalog$Holder.class
 ed/inf/adbs/lightdb/SelectEvaluator$BinaryOperator.class
 ed/inf/adbs/lightdb/LightDB.class
 ed/inf/adbs/lightdb/ScanOperator.class

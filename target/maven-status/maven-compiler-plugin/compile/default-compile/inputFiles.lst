@@ -6,7 +6,6 @@
 /Users/wangziyi/Desktop/LightDB/src/main/java/ed/inf/adbs/lightdb/DatabaseCatalog.java
 /Users/wangziyi/Desktop/LightDB/src/main/java/ed/inf/adbs/lightdb/SortOperator.java
 /Users/wangziyi/Desktop/LightDB/src/main/java/ed/inf/adbs/lightdb/TupleComparator.java
-/Users/wangziyi/Desktop/LightDB/src/main/java/ed/inf/adbs/lightdb/SpecificColumnsComparator.java
 /Users/wangziyi/Desktop/LightDB/src/main/java/ed/inf/adbs/lightdb/JoinEvalExpression.java
 /Users/wangziyi/Desktop/LightDB/src/main/java/ed/inf/adbs/lightdb/ScanOperator.java
 /Users/wangziyi/Desktop/LightDB/src/main/java/ed/inf/adbs/lightdb/SelectEvaluator.java
