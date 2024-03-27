@@ -48,8 +48,25 @@ public class SelectEvaluator extends ExpressionDeParser {
         this.result = operator.apply(leftValue, rightValue);
     }
 
+
     // Overridden visit methods for different types of expressions. Each method evaluates
     // the expression and sets the result field accordingly.
+
+    @Override
+    public void visit(Column column) {
+        String fullyQualifiedName = column.getFullyQualifiedName();
+        Integer index = schema.getIndex(fullyQualifiedName);
+
+        if (index != null) {
+            Object value = tuple.getValues().get(index); // Directly access the integer value
+            super.getBuffer().setLength(0); // Clear any previous value
+            super.getBuffer().append(value.toString()); // Convert integer to String for compatibility
+        } else {
+            throw new RuntimeException("Column not found: " + fullyQualifiedName);
+        }
+    }
+
+
     @Override
     public void visit(GreaterThan greaterThan) {
         evaluateBinaryExpression(greaterThan.getLeftExpression(), greaterThan.getRightExpression(), (left, right) -> left > right);
@@ -104,19 +121,6 @@ public class SelectEvaluator extends ExpressionDeParser {
         orExpression.getRightExpression().accept(this);
     }
 
-    @Override
-    public void visit(Column column) {
-        String fullyQualifiedName = column.getFullyQualifiedName();
-        Integer index = schema.getColumnIndex(fullyQualifiedName);
-
-        if (index != null) {
-            Object value = tuple.getValues().get(index); // Directly access the integer value
-            super.getBuffer().setLength(0); // Clear any previous value
-            super.getBuffer().append(value.toString()); // Convert integer to String for compatibility
-        } else {
-            throw new RuntimeException("Column not found: " + fullyQualifiedName);
-        }
-    }
 
     @FunctionalInterface
     interface BinaryOperator<T> {

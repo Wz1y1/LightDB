@@ -4,86 +4,144 @@ import net.sf.jsqlparser.JSQLParserException;
 import net.sf.jsqlparser.expression.*;
 import net.sf.jsqlparser.expression.operators.conditional.AndExpression;
 import net.sf.jsqlparser.expression.operators.relational.*;
-import net.sf.jsqlparser.parser.CCJSqlParserUtil;
 import net.sf.jsqlparser.schema.Column;
+import net.sf.jsqlparser.util.deparser.ExpressionDeParser;
 
 /**
- * Class for evaluating join conditions between two tuples without using a stack.
+ * Evaluates SQL join conditions between tuples from two relations.
+ * This class extends {@link ExpressionDeParser} to visit and evaluate different types of expressions.
  */
-public class JoinEvalExpression {
-    private Schema schema;
-    private Expression joinCondition;
+public class JoinEvalExpression extends ExpressionDeParser {
 
-    public JoinEvalExpression(Schema schema, Expression joinCondition) {
+    private Tuple leftTuple;
+    private Tuple rightTuple;
+    private final Schema schema;
+    private boolean result;
+    private Object currentValue;
+
+    /**
+     * Constructs a new instance to evaluate join expressions based on the specified schema.
+     *
+     * @param schema The combined schema of the left and right tuples involved in the join.
+     */
+    public JoinEvalExpression(Schema schema) {
         this.schema = schema;
-        this.joinCondition = joinCondition;
     }
 
-    public boolean evaluate(Tuple leftTuple, Tuple rightTuple) throws JSQLParserException {
-        if (joinCondition == null) {
-            return true; // Cartesian product, no condition to evaluate.
-        }
-        Expression parsedExpression = CCJSqlParserUtil.parseCondExpression(joinCondition.toString());
-        Object result = evaluateExpression(parsedExpression, leftTuple, rightTuple);
-        if (result instanceof Boolean) {
-            return (Boolean) result;
+    /**
+     * Evaluates a join expression against pairs of tuples from two relations.
+     *
+     * @param expression The join expression to evaluate.
+     * @param leftTuple  The tuple from the left relation.
+     * @param rightTuple The tuple from the right relation.
+     * @return True if the expression evaluates to true for the given pair of tuples, false otherwise.
+     * @throws JSQLParserException If an error occurs during expression parsing.
+     */
+    public boolean evaluate(Expression expression, Tuple leftTuple, Tuple rightTuple) throws JSQLParserException {
+        this.leftTuple = leftTuple;
+        this.rightTuple = rightTuple;
+        expression.accept(this);
+        return result;
+    }
+
+    /**
+     * Visits a column reference in the expression.
+     * Determines whether the column belongs to the left or right tuple and retrieves the corresponding value.
+     *
+     * @param column The column to visit.
+     */
+    @Override
+    public void visit(Column column) {
+        String fullColumnName = column.getFullyQualifiedName();
+        int index = schema.getIndex(fullColumnName);
+
+        if (index != -1) {
+            if (index < leftTuple.getSize()) {
+                currentValue = leftTuple.getValueByPos(index);
+            } else {
+                int rightIndex = index - leftTuple.getSize();
+                currentValue = rightTuple.getValueByPos(rightIndex);
+            }
         } else {
-            throw new RuntimeException("Join condition evaluation did not result in a boolean value.");
+            System.out.println("Column not found in schema: " + fullColumnName);
         }
     }
 
-    private Object evaluateExpression(Expression expression, Tuple leftTuple, Tuple rightTuple) {
-        if (expression instanceof LongValue) {
-            return ((LongValue) expression).getValue();
-        } else if (expression instanceof Column) {
-            return evaluateColumn((Column) expression, leftTuple, rightTuple);
-        } else if (expression instanceof BinaryExpression) {
-            return evaluateBinaryExpression((BinaryExpression) expression, leftTuple, rightTuple);
-        } else if (expression instanceof AndExpression) {
-            return evaluateAndExpression((AndExpression) expression, leftTuple, rightTuple);
-        } else {
-            throw new IllegalArgumentException("Unsupported expression type: " + expression.getClass().getSimpleName());
-        }
+
+    private Object getCurrentValue() {
+        return this.currentValue;
     }
 
-    private Object evaluateColumn(Column column, Tuple leftTuple, Tuple rightTuple) {
-        String columnName = column.getColumnName();
-        Integer index = schema.getColumnIndex(column.getFullyQualifiedName());
-        if (index == null) {
-            throw new IllegalArgumentException("Column not found in schema: " + columnName);
-        }
-        // Assuming schema combines both tuples' schemas, with left tuple's columns coming first.
-        if (index < leftTuple.getValues().size()) {
-            return leftTuple.getValueByPos(index);
-        } else {
-            return rightTuple.getValueByPos(index - leftTuple.getValues().size());
-        }
+    // Methods for visiting different types of expressions follow. Each method
+    // sets the 'result' field based on the evaluation of the expression for the current pair of tuples.
+
+    @Override
+    public void visit(EqualsTo equalsTo) {
+        equalsTo.getLeftExpression().accept(this);
+        Object leftValue = getCurrentValue();
+        equalsTo.getRightExpression().accept(this);
+        Object rightValue = getCurrentValue();
+
+        result = leftValue.equals(rightValue);
     }
 
-    private Object evaluateBinaryExpression(BinaryExpression expression, Tuple leftTuple, Tuple rightTuple) {
-        Object leftVal = evaluateExpression(expression.getLeftExpression(), leftTuple, rightTuple);
-        Object rightVal = evaluateExpression(expression.getRightExpression(), leftTuple, rightTuple);
+    @Override
+    public void visit(NotEqualsTo notEqualsTo) {
+        notEqualsTo.getLeftExpression().accept(this);
+        Object leftValue = getCurrentValue();
+        notEqualsTo.getRightExpression().accept(this);
+        Object rightValue = getCurrentValue();
 
-        if (expression instanceof EqualsTo) {
-            return leftVal.equals(rightVal);
-        } else if (expression instanceof GreaterThan) {
-            return ((Comparable) leftVal).compareTo(rightVal) > 0;
-        } else if (expression instanceof GreaterThanEquals) {
-            return ((Comparable) leftVal).compareTo(rightVal) >= 0;
-        } else if (expression instanceof MinorThan) {
-            return ((Comparable) leftVal).compareTo(rightVal) < 0;
-        } else if (expression instanceof MinorThanEquals) {
-            return ((Comparable) leftVal).compareTo(rightVal) <= 0;
-        } else if (expression instanceof NotEqualsTo) {
-            return !leftVal.equals(rightVal);
-        } else {
-            throw new IllegalArgumentException("Unsupported binary expression type: " + expression.getClass().getSimpleName());
-        }
+        result = !leftValue.equals(rightValue);
     }
 
-    private Object evaluateAndExpression(AndExpression expression, Tuple leftTuple, Tuple rightTuple) {
-        boolean leftResult = (boolean) evaluateExpression(expression.getLeftExpression(), leftTuple, rightTuple);
-        boolean rightResult = (boolean) evaluateExpression(expression.getRightExpression(), leftTuple, rightTuple);
-        return leftResult && rightResult;
+    @Override
+    public void visit(GreaterThan greaterThan) {
+        greaterThan.getLeftExpression().accept(this);
+        Comparable leftValue = (Comparable) getCurrentValue();
+        greaterThan.getRightExpression().accept(this);
+        Comparable rightValue = (Comparable) getCurrentValue();
+
+        result = leftValue.compareTo(rightValue) > 0;
+    }
+
+    @Override
+    public void visit(MinorThan minorThan) {
+        minorThan.getLeftExpression().accept(this);
+        Comparable leftValue = (Comparable) getCurrentValue();
+        minorThan.getRightExpression().accept(this);
+        Comparable rightValue = (Comparable) getCurrentValue();
+
+        result = leftValue.compareTo(rightValue) < 0;
+    }
+
+    @Override
+    public void visit(GreaterThanEquals greaterThanEquals) {
+        greaterThanEquals.getLeftExpression().accept(this);
+        Comparable leftValue = (Comparable) getCurrentValue();
+        greaterThanEquals.getRightExpression().accept(this);
+        Comparable rightValue = (Comparable) getCurrentValue();
+
+        result = leftValue.compareTo(rightValue) >= 0;
+    }
+
+    @Override
+    public void visit(MinorThanEquals minorThanEquals) {
+        minorThanEquals.getLeftExpression().accept(this);
+        Comparable leftValue = (Comparable) getCurrentValue();
+        minorThanEquals.getRightExpression().accept(this);
+        Comparable rightValue = (Comparable) getCurrentValue();
+
+        result = leftValue.compareTo(rightValue) <= 0;
+    }
+
+    @Override
+    public void visit(AndExpression andExpression) {
+        andExpression.getLeftExpression().accept(this);
+        boolean leftResult = this.result;
+        andExpression.getRightExpression().accept(this);
+        boolean rightResult = this.result;
+
+        result = leftResult && rightResult;
     }
 }

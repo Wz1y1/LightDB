@@ -5,7 +5,6 @@
 /Users/wangziyi/Desktop/LightDB/src/main/java/ed/inf/adbs/lightdb/SumOperator.java
 /Users/wangziyi/Desktop/LightDB/src/main/java/ed/inf/adbs/lightdb/DatabaseCatalog.java
 /Users/wangziyi/Desktop/LightDB/src/main/java/ed/inf/adbs/lightdb/SortOperator.java
-/Users/wangziyi/Desktop/LightDB/src/main/java/ed/inf/adbs/lightdb/TupleComparator.java
 /Users/wangziyi/Desktop/LightDB/src/main/java/ed/inf/adbs/lightdb/JoinEvalExpression.java
 /Users/wangziyi/Desktop/LightDB/src/main/java/ed/inf/adbs/lightdb/ScanOperator.java
 /Users/wangziyi/Desktop/LightDB/src/main/java/ed/inf/adbs/lightdb/SelectEvaluator.java
@@ -14,5 +13,4 @@
 /Users/wangziyi/Desktop/LightDB/src/main/java/ed/inf/adbs/lightdb/Operator.java
 /Users/wangziyi/Desktop/LightDB/src/main/java/ed/inf/adbs/lightdb/TableInfo.java
 /Users/wangziyi/Desktop/LightDB/src/main/java/ed/inf/adbs/lightdb/ProjectOperator.java
-/Users/wangziyi/Desktop/LightDB/src/main/java/ed/inf/adbs/lightdb/AliasHandler.java
 /Users/wangziyi/Desktop/LightDB/src/main/java/ed/inf/adbs/lightdb/Tuple.java

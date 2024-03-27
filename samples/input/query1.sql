@@ -14,3 +14,6 @@
 --FROM Sailors
 --WHERE Sailors.A = Boats.F;
 --SELECT * FROM Sailors ORDER BY Sailors.B;
+--SELECT * FROM Reserves, Sailors, Boats WHERE 102 = Boats.D AND Sailors.B = 200 AND Reserves.H = 101
+--SELECT * FROM Reserves, Boats WHERE  Boats.D < Reserves.H
+SELECT * FROM Reserves, Sailors, Boats WHERE Reserves.H = Boats.D AND Sailors.A = Reserves.G
